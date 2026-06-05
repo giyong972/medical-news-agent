@@ -1,6 +1,21 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(gh repo *)",
+      "Bash(vercel link *)",
+      "Bash(vercel env *)",
+      "Bash(vercel deploy *)",
+      "Bash(curl -s -o /dev/null -w \"status=%{http_code}\\\\n\" \"https://news-mu-five-20.vercel.app\" --max-time 20)",
+      "Bash(curl -s \"https://news-mu-five-20.vercel.app\" --max-time 20)",
+      "mcp__supabase__execute_sql",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m ' *)",
+      "Bash(git push *)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "supabase"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

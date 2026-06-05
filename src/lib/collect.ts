@@ -63,15 +63,37 @@ export async function runCollection(opts: { maxSummarize?: number } = {}): Promi
     const { data } = await supabase.from("articles").select("content_hash").in("content_hash", chunk);
     for (const row of data ?? []) existing.add((row as { content_hash: string }).content_hash);
   }
-  let fresh = unique.filter((u) => !existing.has(u.hash));
+  const freshAll = unique.filter((u) => !existing.has(u.hash));
 
-  // 최신순 우선 + 요약 상한
-  fresh.sort((a, b) => {
-    const ta = a.publishedAt ? Date.parse(a.publishedAt) : 0;
-    const tb = b.publishedAt ? Date.parse(b.publishedAt) : 0;
-    return tb - ta;
-  });
-  fresh = fresh.slice(0, maxSummarize);
+  // 소스별로 그룹화하고 각 그룹 내에서는 최신순 정렬
+  const groups = new Map<string, (RawArticle & { hash: string })[]>();
+  for (const u of freshAll) {
+    const g = groups.get(u.source) ?? [];
+    g.push(u);
+    groups.set(u.source, g);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => {
+      const ta = a.publishedAt ? Date.parse(a.publishedAt) : 0;
+      const tb = b.publishedAt ? Date.parse(b.publishedAt) : 0;
+      return tb - ta;
+    });
+  }
+
+  // 라운드로빈으로 소스 간 공평하게 maxSummarize개 선택 (특정 소스 독식 방지)
+  const lists = [...groups.values()];
+  const fresh: (RawArticle & { hash: string })[] = [];
+  for (let i = 0; fresh.length < maxSummarize; i++) {
+    let added = false;
+    for (const list of lists) {
+      if (i < list.length) {
+        fresh.push(list[i]);
+        added = true;
+        if (fresh.length >= maxSummarize) break;
+      }
+    }
+    if (!added) break;
+  }
 
   // 4) 한국어 요약 (동시 4개)
   let summarized = 0;

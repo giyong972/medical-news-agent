@@ -26,6 +26,45 @@ function abstractText(article: Record<string, unknown>): string {
   return "";
 }
 
+function pad(n: string): string {
+  return n.length === 1 ? `0${n}` : n;
+}
+
+/** PubMed 기사에서 발행일(ISO) 추출 */
+function extractDate(article: Record<string, unknown>): string | null {
+  // ArticleDate (가장 정확)
+  const ad = article.ArticleDate as Record<string, unknown> | undefined;
+  const src = Array.isArray(ad) ? (ad[0] as Record<string, unknown>) : ad;
+  let y = "", m = "", d = "";
+  if (src) {
+    y = String(src.Year ?? "");
+    m = String(src.Month ?? "01");
+    d = String(src.Day ?? "01");
+  } else {
+    // Journal > JournalIssue > PubDate
+    const journal = article.Journal as Record<string, unknown> | undefined;
+    const issue = journal?.JournalIssue as Record<string, unknown> | undefined;
+    const pd = issue?.PubDate as Record<string, unknown> | undefined;
+    if (pd) {
+      y = String(pd.Year ?? "");
+      m = String(pd.Month ?? "01");
+      d = String(pd.Day ?? "01");
+    }
+  }
+  if (!y || !/^\d{4}$/.test(y)) return null;
+  // 월이 "Jan" 같은 약어인 경우 처리
+  const months: Record<string, string> = {
+    Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
+    Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
+  };
+  if (months[m]) m = months[m];
+  if (!/^\d{1,2}$/.test(m)) m = "01";
+  if (!/^\d{1,2}$/.test(d)) d = "01";
+  const iso = `${y}-${pad(m)}-${pad(d)}T00:00:00.000Z`;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 export async function fetchPubMed(limit = 12): Promise<RawArticle[]> {
   try {
     const searchUrl =
@@ -75,7 +114,7 @@ export async function fetchPubMed(limit = 12): Promise<RawArticle[]> {
         title,
         url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
         snippet,
-        publishedAt: null,
+        publishedAt: extractDate(article),
       });
     }
     return out;

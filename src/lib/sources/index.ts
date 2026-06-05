@@ -6,7 +6,7 @@ import { fetchPubMed } from "./pubmed";
 const FEED_SOURCES: Record<Exclude<SourceName, "PubMed">, string[]> = {
   WHO: [
     "https://www.who.int/rss-feeds/news-english.xml",
-    "https://www.who.int/feeds/entity/csr/don/en/rss.xml",
+    "https://news.google.com/rss/search?q=WHO+OR+%22World+Health+Organization%22+disease+OR+outbreak+when:30d&hl=en-US&gl=US&ceid=US:en",
   ],
   CDC: [
     "https://tools.cdc.gov/api/v2/resources/media/285676.rss", // CDC Outbreaks
@@ -22,6 +22,7 @@ const FEED_SOURCES: Record<Exclude<SourceName, "PubMed">, string[]> = {
     "https://medicalxpress.com/rss-feed/breaking/",
   ],
   GoogleNewsHealth: [
+    "https://news.google.com/rss/search?q=(health+OR+disease+OR+virus+OR+vaccine+OR+outbreak)+when:7d&hl=en-US&gl=US&ceid=US:en",
     "https://news.google.com/rss/headlines/section/topic/HEALTH?hl=en-US&gl=US&ceid=US:en",
   ],
   ReutersHealth: [
