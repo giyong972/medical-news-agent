@@ -11,7 +11,11 @@
       "Bash(npm run *)",
       "Bash(git add *)",
       "Bash(git commit -q -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Read(//tmp/**)",
+      "Bash(curl -s https://news-mu-five-20.vercel.app/api/collect?secret=__TRACKED_VAR__ --max-time 120)",
+      "mcp__supabase__get_advisors",
+      "mcp__supabase__apply_migration"
     ]
   },
   "enableAllProjectMcpServers": true,

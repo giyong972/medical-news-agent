@@ -15,34 +15,59 @@ const SOURCES: (SourceName | "ALL")[] = [
   "ReutersHealth",
 ];
 
+const SOURCE_SHORT: Record<string, string> = {
+  WHO: "WHO",
+  CDC: "CDC",
+  NIH: "NIH",
+  PubMed: "PubMed",
+  MedicalXpress: "MedicalXpress",
+  GoogleNewsHealth: "Google",
+  ReutersHealth: "Reuters",
+};
+
 const SOURCE_BADGE: Record<string, string> = {
-  WHO: "bg-sky-100 text-sky-800",
-  CDC: "bg-indigo-100 text-indigo-800",
-  NIH: "bg-violet-100 text-violet-800",
-  PubMed: "bg-emerald-100 text-emerald-800",
-  MedicalXpress: "bg-amber-100 text-amber-800",
-  GoogleNewsHealth: "bg-rose-100 text-rose-800",
-  ReutersHealth: "bg-orange-100 text-orange-800",
+  WHO: "bg-sky-100 text-sky-700",
+  CDC: "bg-indigo-100 text-indigo-700",
+  NIH: "bg-violet-100 text-violet-700",
+  PubMed: "bg-emerald-100 text-emerald-700",
+  MedicalXpress: "bg-amber-100 text-amber-700",
+  GoogleNewsHealth: "bg-rose-100 text-rose-700",
+  ReutersHealth: "bg-orange-100 text-orange-700",
 };
 
-const CATEGORY_LABEL: Record<string, string> = {
-  outbreak: "발병/유행",
-  research: "연구",
-  policy: "정책",
-  general: "일반",
+type CatKey = "outbreak" | "research" | "policy" | "general";
+const CATEGORIES: { key: CatKey | "ALL"; label: string; dot: string; chip: string }[] = [
+  { key: "ALL", label: "전체 분류", dot: "bg-slate-400", chip: "data-[on=true]:bg-slate-900 data-[on=true]:text-white data-[on=true]:border-slate-900" },
+  { key: "outbreak", label: "발병·유행", dot: "bg-red-500", chip: "data-[on=true]:bg-red-600 data-[on=true]:text-white data-[on=true]:border-red-600" },
+  { key: "research", label: "연구", dot: "bg-emerald-500", chip: "data-[on=true]:bg-emerald-600 data-[on=true]:text-white data-[on=true]:border-emerald-600" },
+  { key: "policy", label: "정책", dot: "bg-indigo-500", chip: "data-[on=true]:bg-indigo-600 data-[on=true]:text-white data-[on=true]:border-indigo-600" },
+  { key: "general", label: "일반", dot: "bg-slate-400", chip: "data-[on=true]:bg-slate-700 data-[on=true]:text-white data-[on=true]:border-slate-700" },
+];
+const CAT_META: Record<string, { label: string; text: string; dot: string }> = {
+  outbreak: { label: "발병·유행", text: "text-red-600", dot: "bg-red-500" },
+  research: { label: "연구", text: "text-emerald-600", dot: "bg-emerald-500" },
+  policy: { label: "정책", text: "text-indigo-600", dot: "bg-indigo-500" },
+  general: { label: "일반", text: "text-slate-500", dot: "bg-slate-400" },
 };
 
-const SEVERITY: Record<string, { label: string; cls: string }> = {
-  high: { label: "영향도 높음", cls: "bg-red-100 text-red-700 border-red-200" },
-  medium: { label: "영향도 보통", cls: "bg-amber-100 text-amber-700 border-amber-200" },
-  low: { label: "영향도 낮음", cls: "bg-slate-100 text-slate-600 border-slate-200" },
+const SEVERITY: Record<string, { label: string; dot: string }> = {
+  high: { label: "영향도 높음", dot: "bg-red-500" },
+  medium: { label: "영향도 보통", dot: "bg-amber-500" },
+  low: { label: "영향도 낮음", dot: "bg-slate-300" },
 };
 
-function timeAgo(iso: string | null): string {
-  if (!iso) return "날짜 미상";
+const CAT_ACCENT: Record<string, string> = {
+  outbreak: "border-l-red-400",
+  research: "border-l-emerald-400",
+  policy: "border-l-indigo-400",
+  general: "border-l-slate-300",
+};
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "날짜 미상";
-  return d.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" });
 }
 
 export default function Dashboard({
@@ -52,7 +77,8 @@ export default function Dashboard({
   initialArticles: ArticleRow[];
   loadError?: string;
 }) {
-  const [filter, setFilter] = useState<SourceName | "ALL">("ALL");
+  const [source, setSource] = useState<SourceName | "ALL">("ALL");
+  const [cat, setCat] = useState<CatKey | "ALL">("ALL");
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<CollectActionResult | null>(null);
@@ -60,7 +86,8 @@ export default function Dashboard({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return initialArticles.filter((a) => {
-      if (filter !== "ALL" && a.source !== filter) return false;
+      if (source !== "ALL" && a.source !== source) return false;
+      if (cat !== "ALL" && (a.category ?? "general") !== cat) return false;
       if (!q) return true;
       return (
         a.title.toLowerCase().includes(q) ||
@@ -68,20 +95,26 @@ export default function Dashboard({
         (a.diseases ?? []).some((d) => d.toLowerCase().includes(q))
       );
     });
-  }, [initialArticles, filter, query]);
+  }, [initialArticles, source, cat, query]);
 
-  const counts = useMemo(() => {
+  const srcCounts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const a of initialArticles) c[a.source] = (c[a.source] ?? 0) + 1;
     return c;
   }, [initialArticles]);
 
+  const catCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const a of initialArticles) {
+      const k = a.category ?? "general";
+      c[k] = (c[k] ?? 0) + 1;
+    }
+    return c;
+  }, [initialArticles]);
+
   function handleCollect() {
     setResult(null);
-    startTransition(async () => {
-      const r = await collectNow();
-      setResult(r);
-    });
+    startTransition(async () => setResult(await collectNow()));
   }
 
   const needsSetup = loadError || initialArticles.length === 0;
@@ -89,119 +122,131 @@ export default function Dashboard({
   return (
     <div className="min-h-screen">
       {/* 헤더 */}
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
-                <span aria-hidden>🩺</span> 의료 뉴스 수집 Agent
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">
-                WHO · CDC · NIH · PubMed · MedicalXpress · Google News · Reuters 의 최신 질병 정보를
-                자동 수집하고 한국어로 요약합니다.
-              </p>
-            </div>
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="flex items-center gap-2 text-lg font-bold tracking-tight text-slate-900">
+              <span aria-hidden>🩺</span> 의료 뉴스 수집 Agent
+              <span className="ml-1 hidden rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 sm:inline">
+                {initialArticles.length}건
+              </span>
+            </h1>
             <button
               onClick={handleCollect}
               disabled={pending}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:opacity-60"
             >
-              {pending ? (
-                <>
-                  <Spinner /> 수집 중…
-                </>
-              ) : (
-                <>↻ 지금 수집</>
-              )}
+              {pending ? <><Spinner /> 수집 중…</> : <>↻ 지금 수집</>}
             </button>
           </div>
 
-          {/* 통계 */}
-          <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
-            <Stat label="총 기사" value={initialArticles.length} />
-            <Stat label="활성 소스" value={Object.keys(counts).length} />
-            <Stat label="필터 결과" value={filtered.length} />
-          </div>
-
-          {result && (
-            <div
-              className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
-                result.ok
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : "border-red-200 bg-red-50 text-red-700"
-              }`}
-            >
-              {result.ok && result.stats ? (
-                <span>
-                  ✅ 수집 완료 — 수집 {result.stats.fetched}건 / 신규 {result.stats.newArticles}건 /
-                  요약 {result.stats.summarized}건 / 저장 {result.stats.inserted}건 (
-                  {(result.stats.durationMs / 1000).toFixed(1)}초). 새로고침하면 반영됩니다.
-                </span>
-              ) : (
-                <span>⚠️ 수집 실패: {result.error}</span>
-              )}
+          {/* 필터 영역 */}
+          <div className="mt-3 space-y-2">
+            {/* 분류(카테고리) 필터 */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-[11px] font-medium text-slate-400">분류</span>
+              {CATEGORIES.map((c) => {
+                const on = cat === c.key;
+                const n = c.key === "ALL" ? initialArticles.length : catCounts[c.key] ?? 0;
+                return (
+                  <button
+                    key={c.key}
+                    data-on={on}
+                    onClick={() => setCat(c.key)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 ${c.chip}`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
+                    {c.label}
+                    <span className="opacity-60">{n}</span>
+                  </button>
+                );
+              })}
             </div>
-          )}
+
+            {/* 소스 필터 */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-[11px] font-medium text-slate-400">출처</span>
+              {SOURCES.map((s) => {
+                const on = source === s;
+                const label = s === "ALL" ? "전체" : SOURCE_SHORT[s] ?? s;
+                const n = s === "ALL" ? initialArticles.length : srcCounts[s] ?? 0;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setSource(s)}
+                    title={s === "ALL" ? "전체 출처" : SOURCE_LABELS[s as SourceName]}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                      on
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    {label} <span className="opacity-60">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 검색 */}
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="🔍 질병명·키워드 검색 (예: 인플루엔자, 홍역, COVID)"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+            />
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-        {/* 소스 필터 */}
-        <div className="flex flex-wrap gap-2">
-          {SOURCES.map((s) => {
-            const active = filter === s;
-            const label = s === "ALL" ? "전체" : SOURCE_LABELS[s].split(" ")[0];
-            const n = s === "ALL" ? initialArticles.length : counts[s] ?? 0;
-            return (
-              <button
-                key={s}
-                onClick={() => setFilter(s)}
-                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
-                  active
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                }`}
-              >
-                {label} <span className={active ? "text-slate-300" : "text-slate-400"}>{n}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 검색 */}
-        <div className="mt-4">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="질병명·키워드로 검색 (예: 인플루엔자, 홍역, COVID)"
-            className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-          />
-        </div>
-
-        {/* 설정 안내 */}
-        {needsSetup && (
-          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-            <p className="font-semibold">⚙️ 아직 수집된 기사가 없습니다.</p>
-            {loadError && <p className="mt-1 text-amber-700">DB 오류: {loadError}</p>}
-            <ul className="mt-2 list-inside list-disc space-y-1 text-amber-800">
-              <li>Vercel/로컬 환경변수에 <code className="font-mono">SUPABASE_SERVICE_ROLE_KEY</code> 와 <code className="font-mono">OPENROUTER_API_KEY</code> 를 설정하세요.</li>
-              <li>설정 후 위의 <b>“지금 수집”</b> 버튼을 누르거나 매일 자동 크론이 실행됩니다.</li>
-            </ul>
+      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+        {result && (
+          <div
+            className={`mb-4 rounded-lg border px-4 py-2.5 text-sm ${
+              result.ok
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-red-200 bg-red-50 text-red-700"
+            }`}
+          >
+            {result.ok && result.stats ? (
+              <span>
+                ✅ 수집 완료 — 신규 {result.stats.newArticles} · 요약 {result.stats.summarized} · 저장{" "}
+                {result.stats.inserted}건 ({(result.stats.durationMs / 1000).toFixed(1)}초).{" "}
+                <button onClick={() => location.reload()} className="font-semibold underline">
+                  새로고침
+                </button>
+              </span>
+            ) : (
+              <span>⚠️ 수집 실패: {result.error}</span>
+            )}
           </div>
         )}
 
-        {/* 기사 목록 */}
-        <div className="mt-6 space-y-4">
+        {needsSetup && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">⚙️ 아직 수집된 기사가 없습니다.</p>
+            {loadError && <p className="mt-1 text-amber-700">DB 오류: {loadError}</p>}
+            <p className="mt-1 text-amber-800">
+              환경변수(<code className="font-mono">SUPABASE_SERVICE_ROLE_KEY</code>,{" "}
+              <code className="font-mono">OPENROUTER_API_KEY</code>) 설정 후 <b>“지금 수집”</b>을 누르세요.
+            </p>
+          </div>
+        )}
+
+        <p className="mb-2 text-xs text-slate-400">{filtered.length}건 표시</p>
+
+        {/* 컴팩트 그리드 */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((a) => (
             <ArticleCard key={a.id} a={a} />
           ))}
-          {!needsSetup && filtered.length === 0 && (
-            <p className="py-12 text-center text-sm text-slate-400">검색 결과가 없습니다.</p>
-          )}
         </div>
 
-        <footer className="mt-12 border-t border-slate-200 pt-6 text-center text-xs text-slate-400">
-          openrouter/auto 로 요약 · Supabase 저장 · Vercel 배포 · 매일 자동 수집
+        {!needsSetup && filtered.length === 0 && (
+          <p className="py-16 text-center text-sm text-slate-400">조건에 맞는 기사가 없습니다.</p>
+        )}
+
+        <footer className="mt-10 border-t border-slate-200 pt-5 text-center text-xs text-slate-400">
+          openrouter/auto 요약 · Supabase 저장 · Vercel 자동 수집 · WHO·CDC·NIH·PubMed·MedicalXpress·Google·Reuters
         </footer>
       </main>
     </div>
@@ -209,53 +254,49 @@ export default function Dashboard({
 }
 
 function ArticleCard({ a }: { a: ArticleRow }) {
+  const cat = CAT_META[a.category ?? "general"] ?? CAT_META.general;
   const sev = SEVERITY[a.severity ?? "low"] ?? SEVERITY.low;
+  const accent = CAT_ACCENT[a.category ?? "general"] ?? CAT_ACCENT.general;
+  const date = fmtDate(a.published_at ?? a.created_at);
+
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span
-          className={`rounded-md px-2 py-0.5 text-xs font-semibold ${
-            SOURCE_BADGE[a.source] ?? "bg-slate-100 text-slate-700"
-          }`}
-        >
-          {a.source}
+    <article
+      className={`group flex flex-col rounded-lg border border-slate-200 border-l-4 ${accent} bg-white p-3.5 shadow-sm transition hover:shadow-md`}
+    >
+      {/* 메타 */}
+      <div className="mb-1.5 flex items-center gap-1.5 text-[11px]">
+        <span className={`rounded px-1.5 py-0.5 font-semibold ${SOURCE_BADGE[a.source] ?? "bg-slate-100 text-slate-600"}`}>
+          {SOURCE_SHORT[a.source] ?? a.source}
         </span>
-        {a.category && (
-          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-            {CATEGORY_LABEL[a.category] ?? a.category}
-          </span>
-        )}
-        <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${sev.cls}`}>{sev.label}</span>
-        <span className="ml-auto text-xs text-slate-400">{timeAgo(a.published_at ?? a.created_at)}</span>
+        <span className={`inline-flex items-center gap-1 font-medium ${cat.text}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${cat.dot}`} />
+          {cat.label}
+        </span>
+        <span className="inline-flex items-center gap-1 text-slate-400" title={sev.label}>
+          <span className={`h-1.5 w-1.5 rounded-full ${sev.dot}`} />
+        </span>
+        {date && <span className="ml-auto text-slate-400">{date}</span>}
       </div>
 
-      <h2 className="text-base font-semibold leading-snug text-slate-900">
-        <a href={a.url} target="_blank" rel="noopener noreferrer" className="hover:text-sky-700 hover:underline">
+      {/* 제목 */}
+      <h2 className="text-sm font-semibold leading-snug text-slate-900">
+        <a href={a.url} target="_blank" rel="noopener noreferrer" className="line-clamp-2 hover:text-sky-700 hover:underline">
           {a.title}
         </a>
       </h2>
 
+      {/* 요약 */}
       {a.summary_ko ? (
-        <p className="mt-2 text-sm leading-relaxed text-slate-700">{a.summary_ko}</p>
+        <p className="mt-1.5 line-clamp-4 text-xs leading-relaxed text-slate-600">{a.summary_ko}</p>
       ) : (
-        <p className="mt-2 text-sm italic text-slate-400">요약 대기 중…</p>
+        <p className="mt-1.5 text-xs italic text-slate-400">요약 대기 중…</p>
       )}
 
-      {a.key_points && a.key_points.length > 0 && (
-        <ul className="mt-3 space-y-1">
-          {a.key_points.map((p, i) => (
-            <li key={i} className="flex gap-2 text-sm text-slate-600">
-              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-slate-400" />
-              <span>{p}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
+      {/* 질병 태그 */}
       {a.diseases && a.diseases.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {a.diseases.map((d, i) => (
-            <span key={i} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700">
+        <div className="mt-auto flex flex-wrap gap-1 pt-2.5">
+          {a.diseases.slice(0, 3).map((d, i) => (
+            <span key={i} className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-700">
               #{d}
             </span>
           ))}
@@ -265,18 +306,9 @@ function ArticleCard({ a }: { a: ArticleRow }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <span className="flex items-baseline gap-1.5">
-      <span className="text-lg font-bold text-slate-900">{value}</span>
-      <span className="text-slate-500">{label}</span>
-    </span>
-  );
-}
-
 function Spinner() {
   return (
-    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
     </svg>
